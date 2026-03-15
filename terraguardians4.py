@@ -22,7 +22,7 @@ st.set_page_config(
 TWILIO_ACCOUNT_SID = st.secrets["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN = st.secrets["TWILIO_AUTH_TOKEN"]
 TWILIO_PHONE_NUMBER = st.secrets["TWILIO_PHONE_NUMBER"]
-FARMER_PHONE_NUMBER = st.secrets["FARMER_PHONE_NUMBER"]
+FARMER_PHONE_NUMBER = st.secrets["FARMER_PHONE_NUMBER"]  # default fallback
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -101,6 +101,16 @@ growth_stage = st.sidebar.selectbox("Growth Stage", ["initial", "vegetative", "r
 with st.sidebar.expander("Advanced"):
     antecedent_rain = st.number_input("Antecedent Rain (7-day, mm)", min_value=0, max_value=200, value=50)
     soil_type = st.selectbox("Soil Type", ["silty loam", "clay loam", "sandy loam", "loam"])
+
+# ---------- NEW: SMS Recipients Input Section ----------
+st.sidebar.markdown("---")
+st.sidebar.subheader("📱 SMS Recipients")
+recipient_numbers = st.sidebar.text_input(
+    "Enter phone number(s) with country code",
+    value=st.secrets.get("FARMER_PHONE_NUMBER", "+9779861044678"),
+    help="For multiple numbers, separate with commas (e.g., +97798..., +97798...)"
+)
+# --------------------------------------------------------
 
 # -----------------------
 # MAIN PANEL
@@ -198,21 +208,44 @@ with col2:
             st.info(landslide_msg)
             st.info(irrigation_msg)
 
-            # Send SMS via Twilio
-            try:
-                full_message = (
-                    f"AI Advisory {now[:10]}\n"
-                    f"Soil:{soil}% Rain:{rain}mm Slope:{slope}°\n"
-                    f"{landslide_msg[:100]}\n{irrigation_msg}"
-                )
-                message = twilio_client.messages.create(
-                    body=full_message,
-                    from_=TWILIO_PHONE_NUMBER,
-                    to=FARMER_PHONE_NUMBER
-                )
-                st.success(f"SMS sent! SID: {message.sid}")
-            except Exception as e:
-                st.error(f"SMS failed: {e}")
+            # ---------- NEW: SMS Sending Logic (Multiple Recipients) ----------
+            # Prepare SMS message
+            full_message = (
+                f"AI Advisory {now[:10]}\n"
+                f"Soil:{soil}% Rain:{rain}mm Slope:{slope}°\n"
+                f"{landslide_msg[:100]}\n{irrigation_msg}"
+            )
+
+            # Parse recipient numbers
+            raw_numbers = recipient_numbers.strip()
+            if raw_numbers:
+                numbers = [num.strip() for num in raw_numbers.split(",") if num.strip()]
+            else:
+                # Fallback to secret if nothing entered
+                numbers = [st.secrets.get("FARMER_PHONE_NUMBER")] if st.secrets.get("FARMER_PHONE_NUMBER") else []
+
+            # Send SMS to all recipients
+            if numbers:
+                success_count = 0
+                error_count = 0
+                for number in numbers:
+                    try:
+                        message = twilio_client.messages.create(
+                            body=full_message,
+                            from_=TWILIO_PHONE_NUMBER,
+                            to=number
+                        )
+                        success_count += 1
+                    except Exception as e:
+                        error_count += 1
+                        st.warning(f"Failed to send to {number}: {e}")
+                if success_count > 0:
+                    st.success(f"✅ SMS sent to {success_count} recipient(s).")
+                if error_count > 0:
+                    st.error(f"❌ Failed to send to {error_count} recipient(s).")
+            else:
+                st.warning("No valid phone numbers provided.")
+            # ----------------------------------------------------------------
 
 # -----------------------
 # HISTORY SECTION
