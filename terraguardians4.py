@@ -266,9 +266,9 @@ except Exception as e:
 # -----------------------
 # MODEL INFO
 # -----------------------
-with st.expander("About the AI Model"):
-    st.write(f"**Model Type:** Ensemble (XGBoost + LSTM simulated)")
-    st.write(f"**Training Data:** SOTER Nepal database + 3-year field trials")
-    st.write(f"**Validation Accuracy:** {model.accuracy*100:.0f}% on test set")
-    st.write(f"**Training Samples:** {model.training_data_size:,}")
-    st.write("**Features:** Soil moisture, rainfall, slope angle, antecedent rainfall, soil type, crop coefficients")
+with st.expander("About the AI Model (Demo Simulation)"):
+    st.write("**Note:** This is a demonstration prototype. The AI logic is currently simulated using a rule‑based formula to illustrate the concept.")
+    st.write("**Proposed Model for Future Implementation:** Ensemble combining XGBoost (for tabular sensor data) and LSTM (for time‑series patterns like antecedent rainfall).")
+    st.write("**Proposed Training Data:** SOTER Nepal soil database (real, publicly available) + field‑collected data on rainfall, slope, and crop coefficients.")
+    st.write("**Features used in concept:** Soil moisture, rainfall, slope angle, antecedent rainfall, soil type, crop coefficients.")
+    st.write("**Current demo logic:** Weighted formula with a small random factor (not a trained ML model).")
