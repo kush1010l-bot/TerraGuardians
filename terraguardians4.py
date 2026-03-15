@@ -189,10 +189,10 @@ else:
             }
 
             # Save to Supabase
-            try:
+        try:
                 supabase.table("advisories").insert(record).execute()
                 st.success("✅ Analysis saved to database.")
-            except Exception as e:
+        except Exception as e:
                 st.warning(f"Could not save to database: {e}")
 
             # Display results
@@ -202,7 +202,7 @@ else:
             st.info(irrigation_msg)
 
             # Send SMS via Twilio
-            try:
+        try:
                 full_message = (
                     f"AI Advisory {now[:10]}\n"
                     f"Soil:{soil}% Rain:{rain}mm Slope:{slope}°\n"
@@ -214,7 +214,7 @@ else:
                     to=FARMER_PHONE_NUMBER
                 )
                 st.success(f"SMS sent! SID: {message.sid}")
-            except Exception as e:
+        except Exception as e:
                 st.error(f"SMS failed: {e}")
 
 # -----------------------
