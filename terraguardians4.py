@@ -171,7 +171,7 @@ else:
         now = datetime.now().isoformat()
 
             # Prepare data for database
-            record = {
+        record = {
                 "timestamp": now,
                 "soil_moisture": soil,
                 "rainfall_24h": rain,
