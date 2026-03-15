@@ -147,22 +147,25 @@ with col2:
             )
 
             # Determine messages
-            if risk_score > 0.7:
-                risk_level = "🔴 HIGH"
-                landslide_msg = f"⚠️ HIGH landslide risk ({risk_score:.1%} probability). Evacuate if on slope. Do NOT irrigate."
-            elif risk_score > 0.4:
-                risk_level = "🟡 MODERATE"
-                landslide_msg = f"⚠️ Moderate landslide risk ({risk_score:.1%} probability). Avoid irrigation, monitor closely."
-            else:
-                risk_level = "🟢 LOW"
-                landslide_msg = f"✅ Low landslide risk ({risk_score:.1%} probability). Safe for normal irrigation."
-
-            if irrigation_mm > 10:
-                irrigation_msg = f"✅ Irrigation recommended: {irrigation_mm} mm"
-            elif irrigation_mm > 3:
-                irrigation_msg = f"⚠️ Light irrigation recommended: {irrigation_mm} mm"
-            else:
-                irrigation_msg = "❌ No irrigation needed (sufficient soil moisture)"
+            # After computing risk_score and irrigation_mm
+if risk_score > 0.7:
+    risk_level = "🔴 HIGH"
+    landslide_msg = f"⚠️ HIGH landslide risk ({risk_score:.1%} probability). EVACUATE if on slope. DO NOT irrigate."
+    irrigation_msg = "❌ DO NOT IRRIGATE – High landslide risk! Stay away from the Terrace."
+elif risk_score > 0.4:
+    risk_level = "🟡 MODERATE"
+    landslide_msg = f"⚠️ Moderate landslide risk ({risk_score:.1%} probability). Avoid irrigation, monitor closely."
+    irrigation_msg = "⚠️ Irrigate with extreme caution or delay – moderate landslide risk."
+else:
+    risk_level = "🟢 LOW"
+    landslide_msg = f"✅ Low landslide risk ({risk_score:.1%} probability). Safe for normal irrigation."
+    # Normal irrigation logic
+    if irrigation_mm > 10:
+        irrigation_msg = f"✅ Irrigation recommended: {irrigation_mm} mm"
+    elif irrigation_mm > 3:
+        irrigation_msg = f"⚠️ Light irrigation recommended: {irrigation_mm} mm"
+    else:
+        irrigation_msg = "❌ No irrigation needed (sufficient soil moisture)"
 
             # Timestamp
             now = datetime.now().isoformat()
