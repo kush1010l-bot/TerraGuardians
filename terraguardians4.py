@@ -19,13 +19,11 @@ st.set_page_config(
 # -----------------------
 # LOAD SECRETS (Streamlit Cloud)
 # -----------------------
-# Twilio
 TWILIO_ACCOUNT_SID = st.secrets["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN = st.secrets["TWILIO_AUTH_TOKEN"]
 TWILIO_PHONE_NUMBER = st.secrets["TWILIO_PHONE_NUMBER"]
-FARMER_PHONE_NUMBER = st.secrets["FARMER_PHONE_NUMBER"]  # Your test farmer number
+FARMER_PHONE_NUMBER = st.secrets["FARMER_PHONE_NUMBER"]
 
-# Supabase
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -43,13 +41,13 @@ class LandslideRiskModel:
         self.model_loaded = True
         self.training_data_size = 12500
         self.accuracy = 0.87
-        
-    def predict_risk(self, soil_moisture, rainfall_24h, slope_angle, 
+
+    def predict_risk(self, soil_moisture, rainfall_24h, slope_angle,
                      antecedent_rain_7d=None, soil_type=None):
         saturation_ratio = soil_moisture / 50.0
         if antecedent_rain_7d is None:
             antecedent_rain_7d = rainfall_24h * 3.5
-        
+
         risk_score = (
             0.35 * saturation_ratio +
             0.30 * min(1.0, rainfall_24h / 50) +
@@ -60,8 +58,8 @@ class LandslideRiskModel:
         risk_score += interaction_term
         risk_score += np.random.normal(0, 0.02)
         return np.clip(risk_score, 0, 1)
-    
-    def predict_irrigation_need(self, soil_moisture, temp, crop_type="rice", 
+
+    def predict_irrigation_need(self, soil_moisture, temp, crop_type="rice",
                                 growth_stage="vegetative"):
         crop_coefficients = {
             "rice": {"initial": 1.1, "vegetative": 1.2, "reproductive": 1.3, "mature": 0.9},
@@ -146,32 +144,31 @@ with col2:
                 growth_stage=growth_stage
             )
 
-            # Determine messages
-            # After computing risk_score and irrigation_mm
-if risk_score > 0.7:
-    risk_level = "🔴 HIGH"
-    landslide_msg = f"⚠️ HIGH landslide risk ({risk_score:.1%} probability). EVACUATE if on slope. DO NOT irrigate."
-    irrigation_msg = "❌ DO NOT IRRIGATE – High landslide risk! Stay away from the Terrace."
-elif risk_score > 0.4:
-    risk_level = "🟡 MODERATE"
-    landslide_msg = f"⚠️ Moderate landslide risk ({risk_score:.1%} probability). Avoid irrigation, monitor closely."
-    irrigation_msg = "⚠️ Irrigate with extreme caution or delay – moderate landslide risk."
-else:
-    risk_level = "🟢 LOW"
-    landslide_msg = f"✅ Low landslide risk ({risk_score:.1%} probability). Safe for normal irrigation."
-    # Normal irrigation logic
-    if irrigation_mm > 10:
-        irrigation_msg = f"✅ Irrigation recommended: {irrigation_mm} mm"
-    elif irrigation_mm > 3:
-        irrigation_msg = f"⚠️ Light irrigation recommended: {irrigation_mm} mm"
-    else:
-        irrigation_msg = "❌ No irrigation needed (sufficient soil moisture)"
+            # Determine messages based on risk
+            if risk_score > 0.7:
+                risk_level = "🔴 HIGH"
+                landslide_msg = f"⚠️ HIGH landslide risk ({risk_score:.1%} probability). EVACUATE if on slope. DO NOT irrigate."
+                irrigation_msg = "❌ DO NOT IRRIGATE – High landslide risk! Stay away from the Terrace."
+            elif risk_score > 0.4:
+                risk_level = "🟡 MODERATE"
+                landslide_msg = f"⚠️ Moderate landslide risk ({risk_score:.1%} probability). Avoid irrigation, monitor closely."
+                irrigation_msg = "⚠️ Irrigate with extreme caution or delay – moderate landslide risk."
+            else:
+                risk_level = "🟢 LOW"
+                landslide_msg = f"✅ Low landslide risk ({risk_score:.1%} probability). Safe for normal irrigation."
+                # Normal irrigation logic
+                if irrigation_mm > 10:
+                    irrigation_msg = f"✅ Irrigation recommended: {irrigation_mm} mm"
+                elif irrigation_mm > 3:
+                    irrigation_msg = f"⚠️ Light irrigation recommended: {irrigation_mm} mm"
+                else:
+                    irrigation_msg = "❌ No irrigation needed (sufficient soil moisture)"
 
             # Timestamp
-        now = datetime.now().isoformat()
+            now = datetime.now().isoformat()
 
             # Prepare data for database
-        record = {
+            record = {
                 "timestamp": now,
                 "soil_moisture": soil,
                 "rainfall_24h": rain,
@@ -189,10 +186,10 @@ else:
             }
 
             # Save to Supabase
-        try:
+            try:
                 supabase.table("advisories").insert(record).execute()
                 st.success("✅ Analysis saved to database.")
-        except Exception as e:
+            except Exception as e:
                 st.warning(f"Could not save to database: {e}")
 
             # Display results
@@ -202,7 +199,7 @@ else:
             st.info(irrigation_msg)
 
             # Send SMS via Twilio
-        try:
+            try:
                 full_message = (
                     f"AI Advisory {now[:10]}\n"
                     f"Soil:{soil}% Rain:{rain}mm Slope:{slope}°\n"
@@ -214,7 +211,7 @@ else:
                     to=FARMER_PHONE_NUMBER
                 )
                 st.success(f"SMS sent! SID: {message.sid}")
-        except Exception as e:
+            except Exception as e:
                 st.error(f"SMS failed: {e}")
 
 # -----------------------
