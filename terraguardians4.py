@@ -168,7 +168,7 @@ else:
         irrigation_msg = "❌ No irrigation needed (sufficient soil moisture)"
 
             # Timestamp
-            now = datetime.now().isoformat()
+        now = datetime.now().isoformat()
 
             # Prepare data for database
             record = {
