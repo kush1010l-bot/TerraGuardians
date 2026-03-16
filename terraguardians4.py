@@ -17,15 +17,15 @@ st.set_page_config(
 )
 
 # -----------------------
-# LOAD SECRETS (Streamlit Cloud)
+# LOAD SECRETS
 # -----------------------
 TWILIO_ACCOUNT_SID = st.secrets["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN = st.secrets["TWILIO_AUTH_TOKEN"]
 TWILIO_PHONE_NUMBER = st.secrets["TWILIO_PHONE_NUMBER"]
-FARMER_PHONE_NUMBER = st.secrets.get("FARMER_PHONE_NUMBER", "+9779861044678")  # fallback
+FARMER_PHONE_NUMBER = st.secrets.get("FARMER_PHONE_NUMBER", "+9779861044678")
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-SMS_PASSWORD = st.secrets.get("SMS_PASSWORD", "terraguardian123")  # default fallback (change in secrets)
+SMS_PASSWORD = st.secrets.get("SMS_PASSWORD", "terraguardian123")
 
 # -----------------------
 # INITIALIZE CLIENTS
@@ -102,21 +102,14 @@ with st.sidebar.expander("Advanced"):
     antecedent_rain = st.number_input("Antecedent Rain (7-day, mm)", min_value=0, max_value=200, value=50)
     soil_type = st.selectbox("Soil Type", ["silty loam", "clay loam", "sandy loam", "loam"])
 
-# ---------- NEW: SMS Password Protection ----------
+# SMS recipients (always visible)
 st.sidebar.markdown("---")
-st.sidebar.subheader("📱 SMS Settings")
+st.sidebar.subheader("📱 SMS Recipients")
 recipient_numbers = st.sidebar.text_input(
     "Enter phone number(s) with country code",
     value=FARMER_PHONE_NUMBER,
     help="For multiple numbers, separate with commas (e.g., +97798..., +97798...)"
 )
-
-sms_password_input = st.sidebar.text_input(
-    "🔑 Enter Terraguardian Key to send SMS",
-    type="password",
-    help="Required to send SMS (prevents accidental costs). See About section."
-)
-# -------------------------------------------------
 
 # -----------------------
 # MAIN PANEL
@@ -213,16 +206,32 @@ with col2:
             st.info(landslide_msg)
             st.info(irrigation_msg)
 
-            # ---------- Password‑protected SMS sending ----------
-            full_message = (
+            # Store relevant data in session state for later SMS
+            st.session_state['analysis_done'] = True
+            st.session_state['full_message'] = (
                 f"AI Advisory {now[:10]}\n"
                 f"Soil:{soil}% Rain:{rain}mm Slope:{slope}°\n"
                 f"{landslide_msg[:100]}\n{irrigation_msg}"
             )
+            st.session_state['recipient_numbers'] = recipient_numbers
 
-            # Check if password is correct
+# -----------------------
+# SMS SENDING SECTION (appears after analysis)
+# -----------------------
+if st.session_state.get('analysis_done'):
+    st.markdown("---")
+    st.subheader("📱 Send SMS with Terraguardian Key")
+
+    with st.expander("Click to enter password and send SMS"):
+        sms_password_input = st.text_input(
+            "Enter Terraguardian Key",
+            type="password",
+            key="sms_password"
+        )
+        if st.button("Send SMS Now"):
             if sms_password_input == SMS_PASSWORD:
-                raw_numbers = recipient_numbers.strip()
+                # Parse recipients
+                raw_numbers = st.session_state['recipient_numbers'].strip()
                 if raw_numbers:
                     numbers = [num.strip() for num in raw_numbers.split(",") if num.strip()]
                 else:
@@ -234,7 +243,7 @@ with col2:
                     for number in numbers:
                         try:
                             message = twilio_client.messages.create(
-                                body=full_message,
+                                body=st.session_state['full_message'],
                                 from_=TWILIO_PHONE_NUMBER,
                                 to=number
                             )
@@ -249,9 +258,7 @@ with col2:
                 else:
                     st.warning("No valid phone numbers provided.")
             else:
-                # Password incorrect or not entered – show warning
-                st.warning("🔒 SMS not sent – correct Terraguardian Key required. See About section for explanation.")
-            # -----------------------------------------------------
+                st.error("Incorrect Terraguardian Key. SMS not sent.")
 
 # -----------------------
 # HISTORY SECTION
@@ -281,6 +288,7 @@ with st.expander("About the AI Model (Demo Simulation)"):
     st.subheader("🔐 About SMS Password Protection")
     st.write("""
     To prevent accidental SMS costs, sending messages requires a **Terraguardian Key**. 
+    After running an analysis, a separate "Send SMS" section appears where you can enter the key.
     This key is known only to team members. If you're a judge and wish to receive an SMS, 
     please ask a team member during the demo – we'll be happy to send one!
     """)
