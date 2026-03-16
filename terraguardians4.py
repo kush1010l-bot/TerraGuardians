@@ -84,7 +84,7 @@ model = load_model()
 # -----------------------
 # UI HEADER
 # -----------------------
-st.title("🌱 Solar Edge-AI Irrigation & Landslide Risk Monitoring")
+st.title("🌱 Solar Edge-AI Irrigation & Landslide Risk \nMonitoring")
 st.markdown("**Inspired by SOTER Nepal soil database & historical landslide records**")
 
 # -----------------------
