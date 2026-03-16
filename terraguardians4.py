@@ -22,10 +22,10 @@ st.set_page_config(
 TWILIO_ACCOUNT_SID = st.secrets["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN = st.secrets["TWILIO_AUTH_TOKEN"]
 TWILIO_PHONE_NUMBER = st.secrets["TWILIO_PHONE_NUMBER"]
-FARMER_PHONE_NUMBER = st.secrets["FARMER_PHONE_NUMBER"]  # default fallback
-
+FARMER_PHONE_NUMBER = st.secrets.get("FARMER_PHONE_NUMBER", "+9779861044678")  # fallback
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+SMS_PASSWORD = st.secrets.get("SMS_PASSWORD", "terraguardian123")  # default fallback (change in secrets)
 
 # -----------------------
 # INITIALIZE CLIENTS
@@ -102,15 +102,21 @@ with st.sidebar.expander("Advanced"):
     antecedent_rain = st.number_input("Antecedent Rain (7-day, mm)", min_value=0, max_value=200, value=50)
     soil_type = st.selectbox("Soil Type", ["silty loam", "clay loam", "sandy loam", "loam"])
 
-# ---------- NEW: SMS Recipients Input Section ----------
+# ---------- NEW: SMS Password Protection ----------
 st.sidebar.markdown("---")
-st.sidebar.subheader("📱 SMS Recipients")
+st.sidebar.subheader("📱 SMS Settings")
 recipient_numbers = st.sidebar.text_input(
     "Enter phone number(s) with country code",
-    value=st.secrets.get("FARMER_PHONE_NUMBER", "+9779861044678"),
+    value=FARMER_PHONE_NUMBER,
     help="For multiple numbers, separate with commas (e.g., +97798..., +97798...)"
 )
-# --------------------------------------------------------
+
+sms_password_input = st.sidebar.text_input(
+    "🔑 Enter Terraguardian Key to send SMS",
+    type="password",
+    help="Required to send SMS (prevents accidental costs). See About section."
+)
+# -------------------------------------------------
 
 # -----------------------
 # MAIN PANEL
@@ -166,7 +172,6 @@ with col2:
             else:
                 risk_level = "🟢 LOW"
                 landslide_msg = f"✅ Low landslide risk ({risk_score:.1%} probability). Safe for normal irrigation."
-                # Normal irrigation logic
                 if irrigation_mm > 10:
                     irrigation_msg = f"✅ Irrigation recommended: {irrigation_mm} mm"
                 elif irrigation_mm > 3:
@@ -208,44 +213,45 @@ with col2:
             st.info(landslide_msg)
             st.info(irrigation_msg)
 
-            # ---------- NEW: SMS Sending Logic (Multiple Recipients) ----------
-            # Prepare SMS message
+            # ---------- Password‑protected SMS sending ----------
             full_message = (
                 f"AI Advisory {now[:10]}\n"
                 f"Soil:{soil}% Rain:{rain}mm Slope:{slope}°\n"
                 f"{landslide_msg[:100]}\n{irrigation_msg}"
             )
 
-            # Parse recipient numbers
-            raw_numbers = recipient_numbers.strip()
-            if raw_numbers:
-                numbers = [num.strip() for num in raw_numbers.split(",") if num.strip()]
-            else:
-                # Fallback to secret if nothing entered
-                numbers = [st.secrets.get("FARMER_PHONE_NUMBER")] if st.secrets.get("FARMER_PHONE_NUMBER") else []
+            # Check if password is correct
+            if sms_password_input == SMS_PASSWORD:
+                raw_numbers = recipient_numbers.strip()
+                if raw_numbers:
+                    numbers = [num.strip() for num in raw_numbers.split(",") if num.strip()]
+                else:
+                    numbers = [FARMER_PHONE_NUMBER]
 
-            # Send SMS to all recipients
-            if numbers:
-                success_count = 0
-                error_count = 0
-                for number in numbers:
-                    try:
-                        message = twilio_client.messages.create(
-                            body=full_message,
-                            from_=TWILIO_PHONE_NUMBER,
-                            to=number
-                        )
-                        success_count += 1
-                    except Exception as e:
-                        error_count += 1
-                        st.warning(f"Failed to send to {number}: {e}")
-                if success_count > 0:
-                    st.success(f"✅ SMS sent to {success_count} recipient(s).")
-                if error_count > 0:
-                    st.error(f"❌ Failed to send to {error_count} recipient(s).")
+                if numbers:
+                    success_count = 0
+                    error_count = 0
+                    for number in numbers:
+                        try:
+                            message = twilio_client.messages.create(
+                                body=full_message,
+                                from_=TWILIO_PHONE_NUMBER,
+                                to=number
+                            )
+                            success_count += 1
+                        except Exception as e:
+                            error_count += 1
+                            st.warning(f"Failed to send to {number}: {e}")
+                    if success_count > 0:
+                        st.success(f"✅ SMS sent to {success_count} recipient(s).")
+                    if error_count > 0:
+                        st.error(f"❌ Failed to send to {error_count} recipient(s).")
+                else:
+                    st.warning("No valid phone numbers provided.")
             else:
-                st.warning("No valid phone numbers provided.")
-            # ----------------------------------------------------------------
+                # Password incorrect or not entered – show warning
+                st.warning("🔒 SMS not sent – correct Terraguardian Key required. See About section for explanation.")
+            # -----------------------------------------------------
 
 # -----------------------
 # HISTORY SECTION
@@ -255,7 +261,6 @@ try:
     response = supabase.table("advisories").select("*").order("timestamp", desc=True).limit(10).execute()
     if response.data:
         df = pd.DataFrame(response.data)
-        # Drop long text columns for readability
         display_cols = ["timestamp", "soil_moisture", "rainfall_24h", "slope_angle", "risk_level", "irrigation_mm"]
         st.dataframe(df[display_cols])
     else:
@@ -264,7 +269,7 @@ except Exception as e:
     st.warning(f"Could not load history: {e}")
 
 # -----------------------
-# MODEL INFO
+# MODEL INFO (with password explanation)
 # -----------------------
 with st.expander("About the AI Model (Demo Simulation)"):
     st.write("**Note:** This is a demonstration prototype. The AI logic is currently simulated using a rule‑based formula to illustrate the concept.")
@@ -272,3 +277,10 @@ with st.expander("About the AI Model (Demo Simulation)"):
     st.write("**Proposed Training Data:** SOTER Nepal soil database (real, publicly available) + field‑collected data on rainfall, slope, and crop coefficients.")
     st.write("**Features used in concept:** Soil moisture, rainfall, slope angle, antecedent rainfall, soil type, crop coefficients.")
     st.write("**Current demo logic:** Weighted formula with a small random factor (not a trained ML model).")
+    st.markdown("---")
+    st.subheader("🔐 About SMS Password Protection")
+    st.write("""
+    To prevent accidental SMS costs, sending messages requires a **Terraguardian Key**. 
+    This key is known only to team members. If you're a judge and wish to receive an SMS, 
+    please ask a team member during the demo – we'll be happy to send one!
+    """)
