@@ -102,7 +102,7 @@ with st.sidebar.expander("Advanced"):
     antecedent_rain = st.number_input("Antecedent Rain (7-day, mm)", min_value=0, max_value=200, value=50)
     soil_type = st.selectbox("Soil Type", ["silty loam", "clay loam", "sandy loam", "loam"])
 
-# SMS recipients (always visible)
+# SMS recipients
 st.sidebar.markdown("---")
 st.sidebar.subheader("📱 SMS Recipients")
 recipient_numbers = st.sidebar.text_input(
@@ -200,13 +200,20 @@ with col2:
             except Exception as e:
                 st.warning(f"Could not save to database: {e}")
 
-            # Display results
+            # ----- FIXED: Display results with risk‑appropriate irrigation metric -----
+            if risk_score > 0.7:
+                display_irrigation = "0 mm (DO NOT IRRIGATE)"
+            elif risk_score > 0.4:
+                display_irrigation = f"{irrigation_mm} mm (irrigate only if essential – moderate risk)"
+            else:
+                display_irrigation = f"{irrigation_mm} mm"
+
             st.metric("Landslide Risk Score", f"{risk_score:.1%}", delta=None)
-            st.metric("Recommended Irrigation", f"{irrigation_mm} mm")
+            st.metric("Recommended Irrigation", display_irrigation)
             st.info(landslide_msg)
             st.info(irrigation_msg)
 
-            # Store relevant data in session state for later SMS
+            # Store data in session state for later SMS
             st.session_state['analysis_done'] = True
             st.session_state['full_message'] = (
                 f"AI Advisory {now[:10]}\n"
