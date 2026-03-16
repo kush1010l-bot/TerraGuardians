@@ -84,7 +84,7 @@ model = load_model()
 # -----------------------
 # UI HEADER
 # -----------------------
-st.markdown("<h1 style='text-align: center;'>Solar Edge-AI Irrigation & Landslide Risk<br>Monitoring</h1>", unsafe_allow_html=True)
+st.title("🌱 Solar Edge-AI Irrigation & Landslide Risk Monitoring")
 st.markdown("**Inspired by SOTER Nepal soil database & historical landslide records**")
 
 # -----------------------
