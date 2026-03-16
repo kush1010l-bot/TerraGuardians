@@ -84,8 +84,8 @@ model = load_model()
 # -----------------------
 # UI HEADER
 # -----------------------
-st.title("🌱 Solar Edge-AI Irrigation & Landslide Risk Monitoring")
-st.markdown("**Inspired by SOTER Nepal soil database & historical landslide records**")
+st.title("Solar Edge-AI Irrigation & Landslide Risk\nMonitoring")
+st.markdown("*Inspired by SOTER Nepal soil database & historical landslide records*")
 
 # -----------------------
 # SIDEBAR FOR INPUTS
@@ -200,7 +200,7 @@ with col2:
             except Exception as e:
                 st.warning(f"Could not save to database: {e}")
 
-            # ----- FIXED: Display results with risk‑appropriate irrigation metric -----
+            # Display results with risk‑appropriate irrigation metric
             if risk_score > 0.7:
                 display_irrigation = "0 mm (DO NOT IRRIGATE)"
             elif risk_score > 0.4:
@@ -268,14 +268,20 @@ if st.session_state.get('analysis_done'):
                 st.error("Incorrect Terraguardian Key. SMS not sent.")
 
 # -----------------------
-# HISTORY SECTION
+# HISTORY SECTION (with fixed irrigation display)
 # -----------------------
 st.subheader("📊 Past Advisories")
 try:
     response = supabase.table("advisories").select("*").order("timestamp", desc=True).limit(10).execute()
     if response.data:
         df = pd.DataFrame(response.data)
-        display_cols = ["timestamp", "soil_moisture", "rainfall_24h", "slope_angle", "risk_level", "irrigation_mm"]
+        # Create a display column for irrigation that shows 0 for high risk
+        df["display_irrigation"] = df.apply(
+            lambda row: "0 mm" if "HIGH" in str(row["risk_level"]) else f"{row['irrigation_mm']} mm",
+            axis=1
+        )
+        # Select columns to show, using the new display column
+        display_cols = ["timestamp", "soil_moisture", "rainfall_24h", "slope_angle", "risk_level", "display_irrigation"]
         st.dataframe(df[display_cols])
     else:
         st.info("No historical data yet. Run an analysis to see history.")
