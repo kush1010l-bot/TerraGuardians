@@ -11,7 +11,7 @@ import os
 # PAGE CONFIG
 # -----------------------
 st.set_page_config(
-    page_title="AI Smart Irrigation & Landslide Advisory",
+    page_title="Solar Edge-AI Irrigation & Landslide Risk Monitoring",
     page_icon="🌱",
     layout="wide"
 )
@@ -84,8 +84,8 @@ model = load_model()
 # -----------------------
 # UI HEADER
 # -----------------------
-st.title("🌱 AI-Powered Smart Irrigation & Landslide Advisory")
-st.markdown("**Using Machine Learning trained on SOTER Nepal soil database + historical landslide records**")
+st.title("🌱 Solar Edge-AI Irrigation & Landslide Risk Monitoring")
+st.markdown("**Inspired by SOTER Nepal soil database & historical landslide records**")
 
 # -----------------------
 # SIDEBAR FOR INPUTS
