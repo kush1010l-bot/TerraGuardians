@@ -6,9 +6,10 @@ import plotly.graph_objects as go
 from twilio.rest import Client
 from supabase import create_client, Client as SupabaseClient
 import os
+import re  # for sentence splitting in AI answers
 
 # -----------------------
-# Imports for AI Agronomist (only if not on cloud, but we'll import anyway)
+# Imports for AI Agronomist
 # -----------------------
 try:
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -53,19 +54,20 @@ class LandslideRiskModel:
         self.training_data_size = 12500
         self.accuracy = 0.87
 
-    def predict_risk(self, soil_moisture, rainfall_24h, slope_angle,
+    def predict_risk(self, soil_moisture, rainfall_24h, slope_riser,
                      antecedent_rain_7d=None, soil_type=None):
         saturation_ratio = soil_moisture / 50.0
         if antecedent_rain_7d is None:
             antecedent_rain_7d = rainfall_24h * 3.5
 
+        # Use slope_riser with denominator 60° (typical max for terrace risers)
         risk_score = (
             0.35 * saturation_ratio +
             0.30 * min(1.0, rainfall_24h / 50) +
-            0.25 * min(1.0, slope_angle / 40) +
+            0.25 * min(1.0, slope_riser / 60) +
             0.10 * min(1.0, antecedent_rain_7d / 100)
         )
-        interaction_term = saturation_ratio * (slope_angle / 40) * 0.2
+        interaction_term = saturation_ratio * (slope_riser / 60) * 0.2
         risk_score += interaction_term
         risk_score += np.random.normal(0, 0.02)
         return np.clip(risk_score, 0, 1)
@@ -105,7 +107,7 @@ def load_phi_model():
         st.warning("AI Agronomist dependencies are not installed. Please install transformers and torch to use this feature.")
         return None, None
 
-    # Detect if running on Streamlit Cloud (environment variable set)
+    # Detect if running on Streamlit Cloud
     if os.getenv("STREAMLIT_RUNTIME"):
         st.warning("AI Agronomist is disabled on the cloud due to memory limits. Please see the live demo on my laptop during presentation.")
         return None, None
@@ -138,7 +140,14 @@ st.sidebar.header("Sensor Inputs (Simulated)")
 soil = st.sidebar.slider("Soil Moisture (%)", 0, 50, 20)
 rain = st.sidebar.slider("Rainfall last 24h (mm)", 0, 20, 2)
 temp = st.sidebar.slider("Temperature (°C)", 10, 40, 25)
-slope = st.sidebar.slider("Slope Angle (°)", 0, 40, 20)
+
+# Two slope inputs: bed (for irrigation reference) and riser (for landslide risk)
+st.sidebar.markdown("### Slope Inputs")
+slope_bed = st.sidebar.slider("Terrace Bed Slope (°) – for irrigation reference", 0, 10, 2,
+                              help="The nearly flat surface where crops grow. Usually 0–5°.")
+slope_riser = st.sidebar.slider("Terrace Riser Slope (°) – for landslide risk", 0, 60, 30,
+                                help="The steep wall between terraces. Can exceed 60° in some areas.")
+
 crop_type = st.sidebar.selectbox("Crop Type", ["rice", "maize", "vegetables"])
 growth_stage = st.sidebar.selectbox("Growth Stage", ["initial", "vegetative", "reproductive", "mature"])
 
@@ -182,11 +191,11 @@ with col2:
     st.subheader("Run Analysis")
     if st.button("🚀 Run AI Analysis", type="primary"):
         with st.spinner("AI model running inference..."):
-            # Predictions
+            # Predictions – use riser slope for landslide risk
             risk_score = model.predict_risk(
                 soil_moisture=soil,
                 rainfall_24h=rain,
-                slope_angle=slope,
+                slope_riser=slope_riser,
                 antecedent_rain_7d=antecedent_rain,
                 soil_type=soil_type
             )
@@ -219,13 +228,14 @@ with col2:
             # Timestamp
             now = datetime.now().isoformat()
 
-            # Prepare data for database
+            # Prepare data for database (includes both slopes)
             record = {
                 "timestamp": now,
                 "soil_moisture": soil,
                 "rainfall_24h": rain,
                 "temperature": temp,
-                "slope_angle": slope,
+                "slope_bed": slope_bed,
+                "slope_riser": slope_riser,
                 "crop_type": crop_type,
                 "growth_stage": growth_stage,
                 "antecedent_rain": antecedent_rain,
@@ -261,7 +271,7 @@ with col2:
             st.session_state['analysis_done'] = True
             st.session_state['full_message'] = (
                 f"AI Advisory {now[:10]}\n"
-                f"Soil:{soil}% Rain:{rain}mm Slope:{slope}°\n"
+                f"Soil:{soil}% Rain:{rain}mm Riser slope:{slope_riser}°\n"
                 f"{landslide_msg[:100]}\n{irrigation_msg}"
             )
             st.session_state['recipient_numbers'] = recipient_numbers
@@ -327,7 +337,7 @@ with tab1:
                 lambda row: "0 mm" if "HIGH" in str(row["risk_level"]) else f"{row['irrigation_mm']} mm",
                 axis=1
             )
-            display_cols = ["timestamp", "soil_moisture", "rainfall_24h", "slope_angle", "risk_level", "display_irrigation"]
+            display_cols = ["timestamp", "soil_moisture", "rainfall_24h", "slope_riser", "risk_level", "display_irrigation"]
             st.dataframe(df[display_cols])
         else:
             st.info("No historical data yet. Run an analysis to see history.")
@@ -337,7 +347,7 @@ with tab1:
 with tab2:
     st.subheader("🤖 AI Agronomist (Phi-1.5)")
     st.markdown("""
-    **Ask any farming question** – this lightweight AI runs locally on your laptop.
+    **Ask any farming question** – answers are short and practical.
     Examples:  
     * "How to control pests in maize?"  
     * "When should I plant rice?"  
@@ -348,24 +358,34 @@ with tab2:
     
     if st.button("Get Answer", key="phi_button"):
         if question:
-            with st.spinner("Thinking... (first load may take a minute)"):
+            with st.spinner("Thinking..."):
                 model_phi, tokenizer = load_phi_model()
                 if model_phi is None:
-                    # Fallback already handled in loader
                     pass
                 else:
                     try:
-                        inputs = tokenizer(question, return_tensors="pt")
+                        # Prepare prompt to encourage short answer
+                        prompt = f"Question: {question}\nAnswer in one short sentence:"
+                        inputs = tokenizer(prompt, return_tensors="pt")
+                        
                         with torch.no_grad():
                             outputs = model_phi.generate(
                                 **inputs,
-                                max_new_tokens=100,
-                                temperature=0.7,
-                                do_sample=True
+                                max_new_tokens=30,          # Limit length
+                                temperature=0.3,            # More deterministic
+                                do_sample=True,
+                                pad_token_id=tokenizer.eos_token_id
                             )
-                        answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                        st.success("Answer:")
-                        st.write(answer)
+                        full_answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                        
+                        # Extract only the first sentence after the prompt
+                        answer_part = full_answer[len(prompt):].strip()
+                        first_sentence = re.split(r'[.\n]', answer_part)[0].strip()
+                        if first_sentence:
+                            st.success("Answer:")
+                            st.write(first_sentence + ".")
+                        else:
+                            st.write(answer_part)  # fallback
                     except Exception as e:
                         st.error(f"Error: {e}")
         else:
