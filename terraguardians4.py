@@ -8,6 +8,17 @@ from supabase import create_client, Client as SupabaseClient
 import os
 
 # -----------------------
+# Imports for AI Agronomist (only if not on cloud, but we'll import anyway)
+# -----------------------
+try:
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    import torch
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    st.warning("AI Agronomist dependencies not installed. The AI tab will be disabled.")
+
+# -----------------------
 # PAGE CONFIG
 # -----------------------
 st.set_page_config(
@@ -80,6 +91,39 @@ def load_model():
     return LandslideRiskModel()
 
 model = load_model()
+
+# -----------------------
+# Memory‑optimized loader for Phi-1.5 (with cloud detection)
+# -----------------------
+@st.cache_resource
+def load_phi_model():
+    """
+    Load Microsoft Phi-1.5 (1.3B) – safe for local 8GB RAM.
+    On Streamlit Cloud, returns None and shows a warning.
+    """
+    if not TRANSFORMERS_AVAILABLE:
+        st.warning("AI Agronomist dependencies are not installed. Please install transformers and torch to use this feature.")
+        return None, None
+
+    # Detect if running on Streamlit Cloud (environment variable set)
+    if os.getenv("STREAMLIT_RUNTIME"):
+        st.warning("AI Agronomist is disabled on the cloud due to memory limits. Please see the live demo on my laptop during presentation.")
+        return None, None
+
+    model_name = "microsoft/phi-1_5"
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float32,
+            device_map="cpu",
+            low_cpu_mem_usage=True,
+            trust_remote_code=True
+        )
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        return model, tokenizer
+    except Exception as e:
+        st.error(f"Failed to load AI model: {e}")
+        return None, None
 
 # -----------------------
 # UI HEADER
@@ -268,30 +312,67 @@ if st.session_state.get('analysis_done'):
                 st.error("Incorrect Terraguardian Key. SMS not sent.")
 
 # -----------------------
-# HISTORY SECTION (with fixed irrigation display)
+# TABS for History, AI Agronomist, and About
 # -----------------------
-st.subheader("📊 Past Advisories")
-try:
-    response = supabase.table("advisories").select("*").order("timestamp", desc=True).limit(10).execute()
-    if response.data:
-        df = pd.DataFrame(response.data)
-        # Create a display column for irrigation that shows 0 for high risk
-        df["display_irrigation"] = df.apply(
-            lambda row: "0 mm" if "HIGH" in str(row["risk_level"]) else f"{row['irrigation_mm']} mm",
-            axis=1
-        )
-        # Select columns to show, using the new display column
-        display_cols = ["timestamp", "soil_moisture", "rainfall_24h", "slope_angle", "risk_level", "display_irrigation"]
-        st.dataframe(df[display_cols])
-    else:
-        st.info("No historical data yet. Run an analysis to see history.")
-except Exception as e:
-    st.warning(f"Could not load history: {e}")
+tab1, tab2, tab3 = st.tabs(["📊 Past Advisories", "🤖 AI Agronomist", "ℹ️ About"])
 
-# -----------------------
-# MODEL INFO (with password explanation)
-# -----------------------
-with st.expander("About the AI Model (Demo Simulation)"):
+with tab1:
+    st.subheader("📊 Past Advisories")
+    try:
+        response = supabase.table("advisories").select("*").order("timestamp", desc=True).limit(10).execute()
+        if response.data:
+            df = pd.DataFrame(response.data)
+            # Create a display column for irrigation that shows 0 for high risk
+            df["display_irrigation"] = df.apply(
+                lambda row: "0 mm" if "HIGH" in str(row["risk_level"]) else f"{row['irrigation_mm']} mm",
+                axis=1
+            )
+            display_cols = ["timestamp", "soil_moisture", "rainfall_24h", "slope_angle", "risk_level", "display_irrigation"]
+            st.dataframe(df[display_cols])
+        else:
+            st.info("No historical data yet. Run an analysis to see history.")
+    except Exception as e:
+        st.warning(f"Could not load history: {e}")
+
+with tab2:
+    st.subheader("🤖 AI Agronomist (Phi-1.5)")
+    st.markdown("""
+    **Ask any farming question** – this lightweight AI runs locally on your laptop.
+    Examples:  
+    * "How to control pests in maize?"  
+    * "When should I plant rice?"  
+    * "What fertilizer is best for vegetables?"
+    """)
+    
+    question = st.text_input("Your question:", key="phi_question")
+    
+    if st.button("Get Answer", key="phi_button"):
+        if question:
+            with st.spinner("Thinking... (first load may take a minute)"):
+                model_phi, tokenizer = load_phi_model()
+                if model_phi is None:
+                    # Fallback already handled in loader
+                    pass
+                else:
+                    try:
+                        inputs = tokenizer(question, return_tensors="pt")
+                        with torch.no_grad():
+                            outputs = model_phi.generate(
+                                **inputs,
+                                max_new_tokens=100,
+                                temperature=0.7,
+                                do_sample=True
+                            )
+                        answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                        st.success("Answer:")
+                        st.write(answer)
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+        else:
+            st.warning("Please enter a question.")
+
+with tab3:
+    st.subheader("About the AI Model (Demo Simulation)")
     st.write("**Note:** This is a demonstration prototype. The AI logic is currently simulated using a rule‑based formula to illustrate the concept.")
     st.write("**Proposed Model for Future Implementation:** Ensemble combining XGBoost (for tabular sensor data) and LSTM (for time‑series patterns like antecedent rainfall).")
     st.write("**Proposed Training Data:** SOTER Nepal soil database (real, publicly available) + field‑collected data on rainfall, slope, and crop coefficients.")
