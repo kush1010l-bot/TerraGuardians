@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from twilio.rest import Client
 from supabase import create_client, Client as SupabaseClient
 import os
-import re  # for sentence splitting
+import re  # for sentence splitting in AI answers
 
 # -----------------------
 # Imports for AI Agronomist
@@ -60,14 +60,14 @@ class LandslideRiskModel:
         if antecedent_rain_7d is None:
             antecedent_rain_7d = rainfall_24h * 3.5
 
-        # Slope denominator increased to 60° (typical max for terrace risers)
+        # Use slope_riser with denominator 60° (typical max for terrace risers)
         risk_score = (
             0.35 * saturation_ratio +
             0.30 * min(1.0, rainfall_24h / 50) +
-            0.25 * min(1.0, slope_riser / 60) +          # updated denominator
+            0.25 * min(1.0, slope_riser / 60) +
             0.10 * min(1.0, antecedent_rain_7d / 100)
         )
-        interaction_term = saturation_ratio * (slope_riser / 60) * 0.2   # updated denominator
+        interaction_term = saturation_ratio * (slope_riser / 60) * 0.2
         risk_score += interaction_term
         risk_score += np.random.normal(0, 0.02)
         return np.clip(risk_score, 0, 1)
@@ -141,7 +141,7 @@ soil = st.sidebar.slider("Soil Moisture (%)", 0, 50, 20)
 rain = st.sidebar.slider("Rainfall last 24h (mm)", 0, 20, 2)
 temp = st.sidebar.slider("Temperature (°C)", 10, 40, 25)
 
-# Two slope inputs: bed (for irrigation context) and riser (for landslide risk)
+# Two slope inputs: bed (for irrigation reference) and riser (for landslide risk)
 st.sidebar.markdown("### Slope Inputs")
 slope_bed = st.sidebar.slider("Terrace Bed Slope (°) – for irrigation reference", 0, 10, 2,
                               help="The nearly flat surface where crops grow. Usually 0–5°.")
@@ -171,7 +171,6 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Current Sensor Readings")
-    # Show bed slope in gauge (just for display)
     gauge_fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=soil,
@@ -229,13 +228,13 @@ with col2:
             # Timestamp
             now = datetime.now().isoformat()
 
-            # Prepare data for database
+            # Prepare data for database (includes both slopes)
             record = {
                 "timestamp": now,
                 "soil_moisture": soil,
                 "rainfall_24h": rain,
                 "temperature": temp,
-                "slope_bed": slope_bed,                # store both slopes
+                "slope_bed": slope_bed,
                 "slope_riser": slope_riser,
                 "crop_type": crop_type,
                 "growth_stage": growth_stage,
